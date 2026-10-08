@@ -1,0 +1,73 @@
+{
+  "experiment_name": "rough_parallel",
+  "created_at_utc": "20261007T154857Z",
+  "stage": "rough_ranking",
+  "method": "baseline",
+  "project_root": "/mnt/experiment_project",
+  "training_data": "data/splits/interactions_train.csv",
+  "validation_data": "data/splits/interactions_validation.csv",
+  "test_data": "data/splits/interactions_test.csv (evaluation only)",
+  "validation_policy": "held out from optimizer input; available to evaluation.evaluate --split validation",
+  "default_training_settings": {
+    "recall": {
+      "two_tower": {
+        "epochs": 10,
+        "negative_samples": 2,
+        "batch_size": 1024,
+        "shuffle": true,
+        "num_workers": 8,
+        "pin_memory": true,
+        "persistent_workers": true,
+        "prefetch_factor": 2,
+        "multiprocessing_context": "spawn"
+      },
+      "lightgcn": {
+        "layers": 2,
+        "embedding_dim": 64,
+        "epochs": 50,
+        "batch_size": 200,
+        "batches_per_epoch": 10
+      }
+    },
+    "rough_ranking": {
+      "epochs": 10,
+      "learning_rate": 0.001,
+      "batch_size": 1024,
+      "shuffle": true,
+      "num_workers": 8,
+      "pin_memory": true,
+      "persistent_workers": true,
+      "prefetch_factor": 2,
+      "multiprocessing_context": "spawn"
+    },
+    "fine_ranking": {
+      "epochs": 1,
+      "learning_rate": 0.01,
+      "dcn_layers": 2,
+      "batch_size": 1024,
+      "shuffle": true,
+      "num_workers": 8,
+      "pin_memory": true,
+      "persistent_workers": true,
+      "prefetch_factor": 2,
+      "multiprocessing_context": "spawn"
+    },
+    "rearrangement": {
+      "similarity_batch_size": 2048,
+      "device": "cuda"
+    }
+  },
+  "training_device": "cuda",
+  "config": {},
+  "history_sequence": {
+    "mode": "hybrid",
+    "L": 20,
+    "alpha": 2.0,
+    "hard_topk": 10,
+    "ranking_weight": 0.15
+  },
+  "interaction_split": "train",
+  "outputs": [
+    "/mnt/experiment_project/experiments/20261007T154857Z_rough_parallel/weights/three_towers_model.pth"
+  ]
+}

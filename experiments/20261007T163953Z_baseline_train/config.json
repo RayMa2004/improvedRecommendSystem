@@ -1,0 +1,88 @@
+{
+  "experiment_name": "baseline_train",
+  "created_at_utc": "20261007T163953Z",
+  "stage": "all",
+  "method": "baseline",
+  "project_root": "/mnt/experiment_project",
+  "training_data": "data/splits/interactions_train.csv",
+  "validation_data": "data/splits/interactions_validation.csv",
+  "test_data": "data/splits/interactions_test.csv (evaluation only)",
+  "validation_policy": "held out from optimizer input; available to evaluation.evaluate --split validation",
+  "default_training_settings": {
+    "recall": {
+      "two_tower": {
+        "epochs": 10,
+        "negative_samples": 2,
+        "batch_size": 1024,
+        "shuffle": true,
+        "num_workers": 8,
+        "pin_memory": true,
+        "persistent_workers": true,
+        "prefetch_factor": 2,
+        "multiprocessing_context": "spawn"
+      },
+      "lightgcn": {
+        "layers": 2,
+        "embedding_dim": 64,
+        "epochs": 50,
+        "batch_size": 200,
+        "batches_per_epoch": 10
+      }
+    },
+    "rough_ranking": {
+      "epochs": 10,
+      "learning_rate": 0.001,
+      "batch_size": 1024,
+      "shuffle": true,
+      "num_workers": 8,
+      "pin_memory": true,
+      "persistent_workers": true,
+      "prefetch_factor": 2,
+      "multiprocessing_context": "spawn"
+    },
+    "fine_ranking": {
+      "epochs": 1,
+      "learning_rate": 0.01,
+      "dcn_layers": 2,
+      "batch_size": 1024,
+      "shuffle": true,
+      "num_workers": 8,
+      "pin_memory": true,
+      "persistent_workers": true,
+      "prefetch_factor": 2,
+      "multiprocessing_context": "spawn"
+    },
+    "rearrangement": {
+      "similarity_batch_size": 2048,
+      "device": "cuda"
+    }
+  },
+  "training_device": "cuda",
+  "config": {
+    "method": "baseline",
+    "seed": 42,
+    "validation": {
+      "per_user": 1,
+      "used_for": "model selection and validation evaluation"
+    },
+    "test": {
+      "per_user": 1,
+      "used_for": "final evaluation only"
+    },
+    "notes": "Run training on interactions_train.csv; do not use interactions_test.csv for model fitting."
+  },
+  "history_sequence": {
+    "mode": "hybrid",
+    "L": 20,
+    "alpha": 2.0,
+    "hard_topk": 10,
+    "ranking_weight": 0.15
+  },
+  "interaction_split": "train",
+  "outputs": [
+    "/mnt/experiment_project/experiments/20261007T163953Z_baseline_train/weights/improved_twin_towers_model.pth",
+    "/mnt/experiment_project/experiments/20261007T163953Z_baseline_train/weights/lightgcn.pth",
+    "/mnt/experiment_project/experiments/20261007T163953Z_baseline_train/weights/three_towers_model.pth",
+    "/mnt/experiment_project/experiments/20261007T163953Z_baseline_train/weights/multi_task_model.pth"
+  ]
+}

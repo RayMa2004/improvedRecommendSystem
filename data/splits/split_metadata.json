@@ -1,0 +1,19 @@
+{
+  "source": "data\\interactions_new.csv",
+  "validation_per_user": 1,
+  "test_per_user": 1,
+  "counts": {
+    "all": 94934,
+    "train": 74946,
+    "validation": 9989,
+    "test": 9999,
+    "train_validation": 84935
+  },
+  "latest_test_datetime": "2026/4/1 9:34",
+  "files": {
+    "train": "data\\splits\\interactions_train.csv",
+    "validation": "data\\splits\\interactions_validation.csv",
+    "test": "data\\splits\\interactions_test.csv",
+    "train_validation": "data\\splits\\interactions_train_validation.csv"
+  }
+}

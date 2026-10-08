@@ -1,0 +1,34 @@
+{
+  "users": 9999,
+  "k": 10,
+  "hit_rate": 0.007100710071007101,
+  "recall": 0.007100710071007101,
+  "ndcg": 0.0036876603744834314,
+  "method_profile": "history",
+  "method_selection": {
+    "recall": "improved",
+    "rough_ranking": "improved",
+    "fine_ranking": "improved",
+    "rearrangement": "baseline"
+  },
+  "history_config": {
+    "mode": "hybrid",
+    "max_length": 20,
+    "hard_threshold_alpha": 2.0,
+    "hard_topk": 10,
+    "temperature": 0.1,
+    "recall_topk": 50,
+    "ranking_weight": 0.15
+  },
+  "failed_users": 44,
+  "failure_examples": {
+    "U08119": "TypeError: unsupported operand type(s) for |: 'list' and 'list'",
+    "U04080": "TypeError: unsupported operand type(s) for |: 'list' and 'list'",
+    "U09840": "TypeError: unsupported operand type(s) for |: 'list' and 'list'",
+    "U07134": "TypeError: unsupported operand type(s) for |: 'list' and 'list'",
+    "U07616": "TypeError: unsupported operand type(s) for |: 'list' and 'list'"
+  },
+  "split": "test",
+  "weights_dir": "/mnt/experiment_project/experiments/20261007T163953Z_baseline_train/weights",
+  "system_interaction_split": "train"
+}

@@ -1,0 +1,21 @@
+{
+  "baseline": "experiments/20261008T035453Z_test_baseline/evaluation.json",
+  "improved": "experiments/20261008T052313Z_test_history_hybrid/evaluation.json",
+  "metrics": {
+    "hit_rate": {
+      "baseline": 0.0053005300530053,
+      "improved": 0.007100710071007101,
+      "delta": 0.0018001800180018008
+    },
+    "recall": {
+      "baseline": 0.0053005300530053,
+      "improved": 0.007100710071007101,
+      "delta": 0.0018001800180018008
+    },
+    "ndcg": {
+      "baseline": 0.00220485957252882,
+      "improved": 0.0036876603744834314,
+      "delta": 0.0014828008019546115
+    }
+  }
+}
