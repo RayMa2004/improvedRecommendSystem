@@ -1,145 +1,212 @@
-# Recommender System
-本项目复现了工业界常用的有效的推荐系统各模块，并将其整合，外部封装良好，使用简便  
-实验版的严格训练、验证、最终重训和测试流程请先阅读
-[`EXPERIMENT_GUIDE.md`](EXPERIMENT_GUIDE.md)。该流程使用隔离的数据切分，测试集只在最终评估阶段读取。  
-实现思路主要参考了王树森老师的b站视频，链接如下：https://www.bilibili.com/video/BV1HZ421U77y/?spm_id_from=333.1007.top_right_bar_window_history.content.click
-## 🗂️ Architecture
-本推荐系统的结构与工业界常用的结构相似，即大致分为4个模块：召回、粗排、精排、重排  
-架构图如下
+# 多阶段推荐系统与历史行为实验
 
-![推荐系统架构图](images/RS架构图.png)
-### Recall
-召回的目的是尽可能的将用户可能喜欢的物品都纳入考虑范围内，这个范围可能会很大，在工业级系统中可能会从几亿物品中召回出几千个物品  
-本系统的召回模块中主要有6个召回通道：基于用户的协同过滤UserCF、基于物品的协同过滤ItemCF、双塔模型召回、基于关键词和分类的召回、基于内容特征的聚类召回和基于LightGCN的召回  
-其中基于关键词和分类的召回通道和基于内容特征的聚类召回通道用于解决物品冷启动问题
-### Rough Ranking
-粗排的目的是给召回出的几千个物品打分，这个粗排分数表示了当前用户喜欢这个物品的可能性，可能性越大，分数越高，最后根据这个分数排序，截断分数最高的前几百个物品送到下一个环节：精排  
-因为粗排要处理的物品数仍然较多，因此打分模型不能太复杂，本系统的粗排模块使用的模型是三塔模型，这是一种介于双塔模型（后融合模型）和多目标排序模型（前融合模型）之间的模型，能够同时兼顾计算量和精度
-### Fine Ranking
-经过粗排的打分和截断，剩下的物品可认为都是用户比较感兴趣的物品了，而精排的目的是通过更复杂的模型进一步打分，更精准的刻画用户与物品之间的兴趣关系，该精排分数也会作为最后推荐结果的一个重要依据  
-本系统的精排模块使用多目标DCN排序模型，网络比粗排模型更复杂，打出来的分也更精确  
-注意：本系统中的精排模块只对物品打分，不做截断，从粗排模块传来的所有物品都会带着其精排分数进入下一个模块：重排
-### Rearrangement
-经过粗排和精排，我们已经对用户对物品的兴趣分数（即精排分数）做了详尽精确的刻画，而重排的目的是在最终的推荐结果中添加多样性，避免内容过于相近的内容出现在很小的一个区域  
-以小红书的场景为例，重排的目的就是避免内容非常相近的内容出现在同一个页面，用户不能同时看到这些内容。工业界的实践中发现，添加多样性可以有效提升推荐系统的大盘指标  
-本系统的重排模块主要利用MMR算法引入多样性，MMR算法中物品相似性的度量是通过提取两个物品的内容特征向量，再计算余弦相似度得到的。而物品的内容特征向量是通过分别提取物品的图文特征再进行concat得到的，这里用到的图片特征提取器和文字特征提取器来自于OpenAI团队做的一项著名工作：Clip，GitHub仓库链接如下：https://github.com/openai/CLIP
-## 🏷️ Version
-### v1.0
-本推荐系统的第一个版本完成于2026.3.20，主要模块及用到的模型如下：  
-召回：基于用户的协同过滤UserCF、基于物品的协同过滤ItemCF、双塔模型召回、基于关键词和分类的召回、基于内容特征的聚类召回  
-粗排：三塔模型（其中的神经网络是简单的MLP）  
-精排：多目标排序模型（其中的神经网络是简单的MLP，没有做特征交叉）  
-重排：Clip的图片特征提取器和文字特征提取器，MMR算法
-### v1.1
-更新日期：2026.3.27，主要内容如下：  
-1.添加基于LightGCN的图算法召回通道  
-2.精排模型替换为多目标DCN深度交叉网络  
-3.针对使用clip处理大数据量的场景做了一些计算内存优化
-### v2.0
-更新日期：2026.4.2，主要内容如下：  
-1.优化离线计算环节  
-主要利用了faiss向量数据库进行优化，双塔模型和LightGCN的物品特征向量在离线计算后插入faiss中（选择的索引是IVFxPQy），以便在在线推荐环节快速匹配相似度最高的TopK  
-三塔模型的物品塔输出的物品特征向量也一样可以离线计算，但是因为还要取出来做前期融合，因此只能用内存或缓存进行存储，无法用faiss  
-2.优化模型超参数  
-在本次更新中，用超参数搜索方法寻找到了各个神经网络模型适合的超参数，所用数据集在/data文件夹中   
-3.数据流  
-到v3.0为止，工业级推荐系统所需的所有构件都已实现完毕，并具备部署能力，下面对目前推荐系统的**数据流**进行说明：  
-(1) 从CSV文件中读取物品数据、用户数据、历史交互数据，得到三个Dataframe对象  
-(2) 预处理Dataframe对象，得到用户画像和物品对象，同时构建推荐需要的字典等数据结构  
-(3) 用准备好的数据初始化各推荐器，对于UserCF等非神经网络方法需要构建相似度矩阵等，而对于双塔模型等神经网络方法可直接载入预训练好的模型权重  
-(4) 到这步可进行在线推荐，可认为推荐系统是一个端到端服务，输入用户ID、当前时间(小时)、当前是否是周末和当前是否是节假日四个信息，输出推荐的物品ID列表，列表中的顺序是有意义的，越靠前的推荐度越高并同时兼顾了多样性
-### v3.0
-更新日期：2026.4.10，本次更新主要针对工程落地问题，主要内容如下：  
-1.基于FastAPI构建微服务  
-基于FastAPI实现了推荐系统的对外接口(在interface/main.py中)，并部署在某IP下，经过**实测**，服务运行正常，响应速度良好  
-注：因为工业级应用常使用数据库存储数据，本次更新中RecommenderSystem类针对数据库的数据流进行了一些调整，但基本逻辑不变，作为一个独立类放在了interface/recommender_system.py中  
-2.支持基于数据库的离线-在线协同架构  
-离线存储：应用启动时从数据库中读取推荐所需数据，将其转换为需要的Dataframe对象格式，然后做预处理，初始化各推荐器  
-在线推荐：将推荐系统部署到某IP节点后可接受来自外部的推荐请求，返回推荐的物品ID列表  
-**另**：模型的预训练权重和数据库的DDL语句已经分别上传到了/model_weights和/sql文件夹中
-### v3.1
-更新日期：2026.4.16，主要内容如下：  
-1.支持根据新数据微调
-在interface/main.py中添加了微调接口，该接口可根据调用方传来的起止时间划定“新数据”的范围，此后系统内部可自动调用数据库接口查询数据并进行模型微调  
-2.补充异常处理  
-对接口和Service层函数添加了异常处理和参数校验，提升系统鲁棒性  
-### v4.0  
-更新日期：2026.5.20，主要内容如下：  
-1.添加Swing召回通道，已整合到主链条中  
-2.将主链条中双塔模型的用户塔和物品塔由简单的MLP替换为DCN  
-3.添加了一些较为先进的精排模型和特征交叉网络，为了避免主链条过于臃肿，这些模型的定义放在了models文件夹中，本次更新的模型如下：  
-✅  通用基础模型MLP  
-✅  精排模型MMoE  
-✅  特征交叉网络LHUC  
-✅  特征交叉网络SENet
-## 📊 Dataset
-本项目所用的数据集只有一部分书籍信息是真实的，其他都是用AI工具生成的模拟的用户数据和交互记录，很大程度上只是为了模拟大数据量场景，进而做性能优化  
-这样的数据集无法用于科研等严肃领域，也不涉及隐私问题
-## ⚙️ Dependency
-在运行本项目前，你需要配置合适的 Python 环境，你需要下载提供的environment.yml文件，然后在Anaconda prompt中运行：
->conda env create -f environment.yml
+基于原作者 ChendiLiu https://github.com/1-dr-eam/RecommenderSystem.git的推荐系统项目，保留多路召回、粗排、精排、重排的完整链路，扩展时间切分、离线训练、方法切换、实验记录和用户历史行为特征。
 
-该命令会自动新建一个默认名称为 rs_project 的 conda 环境并导入所需的包，之后别忘了激活这个环境，运行：
->conda activate rs_project
+本项目用于推荐算法学习和工程实验。数据以模拟用户和交互为主，离线指标不代表真实业务收益。
 
-最后一步需要单独安装GPU版本的Pytorch，运行：
->pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-## 🚀 Usage
-在使用/interface中的外部接口之前，你需要先做以下准备：  
->将main.py中的uvicorn.run函数参数修改为你自己的IP地址和端口号
+## 来源与贡献
 
->将database.py中的数据库连接url修改为你自己的用户名、密码、数据库服务器IP和数据库名称（如果你使用的不是MySQL，你需要更换驱动）  
+原作者提供了多阶段推荐系统的基础工程。原始说明保存在 [README_UPSTREAM.md](README_UPSTREAM.md)，版权和许可见 [LICENSE](LICENSE)。原项目参考了[王树森的推荐系统课程](https://www.bilibili.com/video/BV1HZ421U77y/)和 [OpenAI CLIP](https://github.com/openai/CLIP)。
 
-修改后确定数据与我提供的csv文件或数据库格式一致（这样不容易出问题），之后运行/interface/main.py，推荐系统就会部署在你提供的IP和端口上，之后按照 [API](##API) 的要求发送请求即可
-## 🔌 API
-### POST /recommend
-该接口基于用户ID及当前场景特征（如小时、是否周末、是否节假日）返回个性化推荐物品列表。适用于首页推荐、场景化推送等业务场景  
+| 部分 | 原作者成果 | 本实验副本的改动 |
+|---|---|---|
+| 召回 | UserCF、ItemCF、Swing、DCN 双塔、类目/关键词、内容聚类、LightGCN；FAISS 检索 | 修复聚类召回对象与 ID 混用；新增历史兴趣召回 |
+| 粗排 | 三塔模型，缓存物品塔输出 | 融合历史兴趣分数；支持方法切换 |
+| 精排 | 多目标 DCN；保留其他模型定义供扩展 | 融合历史兴趣分数；支持方法切换 |
+| 重排 | CLIP 图文向量与 MMR 多样性重排 | 本次历史特征实验沿用原算法 |
+| 训练与数据 | 模型训练函数、CSV 数据和预置权重 | 时间切分、分阶段训练入口、配置记录、权重副本、最终重训 |
+| 评估 | 原项目侧重链路与服务实现 | 验证集选参、测试评估、指标比较、实验编排 |
+| 工程 | FastAPI、数据库适配、增量微调接口 | 保留服务代码；本地实验入口另行扩展，未同步改造数据库服务的实验流程 |
 
-**请求参数Body**  
+当前代码还包含数据加载 worker、批量传输和部分内容特征/相似度计算的性能优化；实际运行参数以实验配置和代码为准。
 
-| 字段名        | 类型    | 必填 | 说明                     |
-|---------------|---------|------|--------------------------|
-| `user_id`     | string  | 是   | 用户唯一标识             |
-| `hour`        | integer | 是   | 当前小时（0–23）         |
-| `is_weekend`  | boolean | 是   | 是否为周末               |
-| `is_holiday`  | boolean | 是   | 是否为节假日             |
-  
-**响应体（成功）**
+## 架构与目录
 
-| 字段名           | 类型            | 说明                         |
-|------------------|-----------------|------------------------------|
-| `status`         | string          | 状态，固定为 `"success"`     |
-| `user_id`        | string          | 对应请求中的用户ID           |
-| `recommendations`| array of string | 推荐的物品ID列表，顺序敏感   |
-| `request_id`     | string (UUID)   | 本次请求的唯一标识，用于追踪 |
-  
-**响应体（失败）**
+```text
+用户画像 + 物品内容 + 历史交互
+                |
+             多路召回
+                |
+            三塔模型粗排
+                |
+          多目标 DCN 精排
+                |
+           MMR 多样性重排
+                |
+          有序推荐物品 ID
+```
 
-| HTTP 状态码 | 说明                             | 响应体示例                                                        |
-|-------------|----------------------------------|--------------------------------------------------------------|
-| `400`       | 请求参数缺失或格式错误           | `{"status": "error","message":"Missing request parameters"}` |
-| `404`       | 用户不存在或无可用推荐模型       | `{"status": "error","message":"user doesn't exist"}`         |
+历史序列适配器影响召回、粗排和精排，不单独修改重排公式。精排分数改变后，最终 MMR 输出也可能改变。
 
-### POST /fine_tuning
-该接口基于调用方传来的起止时间，从数据库中查询到新数据，并用该数据进行推荐系统模型微调，返回的是微调成功与否的状态信息
+| 路径 | 用途 |
+|---|---|
+| [main.py](main.py) | CSV 数据准备、模型加载、端到端推荐 |
+| [recall.py](recall.py) | 多路召回；双塔与图模型分别位于 `twin_towers_model.py`、`LightGCN.py` |
+| [rough_ranking.py](rough_ranking.py)、[fine_ranking.py](fine_ranking.py) | 粗排、精排训练与推理 |
+| [rearrangement.py](rearrangement.py)、[entities.py](entities.py) | MMR、物品内容特征和用户画像 |
+| [feature_processor.py](feature_processor.py)、[dataset.py](dataset.py) | 词表、缩放和训练样本 |
+| [history_features.py](history_features.py) | 历史兴趣编码与 `HistoryConfig` |
+| [methods/registry.py](methods/registry.py) | 各阶段 baseline/improved 适配器 |
+| [data_split.py](data_split.py)、`data/splits/` | 时间切分与元数据 |
+| [training/runner.py](training/runner.py) | 按阶段训练、记录配置、导出权重 |
+| [training/performance.py](training/performance.py) | DataLoader 设置与训练耗时日志 |
+| [evaluation/evaluate.py](evaluation/evaluate.py)、[evaluation/metrics.py](evaluation/metrics.py) | 完整链路评估与 Top-K 指标 |
+| [evaluation/search_history.py](evaluation/search_history.py)、[evaluation/compare.py](evaluation/compare.py) | 验证集搜索与结果比较 |
+| [training/pipeline.py](training/pipeline.py) | 串联训练、选参、重训和最终评估 |
+| `experiments/`、`model_weights/` | 实验产物、原项目附带权重 |
+| `models/`、`interface/`、`sql/` | 扩展模型定义、原服务与数据库代码、DDL |
 
-**请求参数Body**  
+## 数据与实验规则
 
-| 字段名          | 类型       | 必填 | 说明   |
-|--------------|----------|------|------|
-| `start_time` | datetime | 是   | 起始时间 |
-| `end_time`   | datetime | 是   | 终止时间 |
-  
-**响应体**
+数据位于 `data/users_new.csv`、`data/items_new.csv`、`data/interactions_new.csv`。部分书籍信息真实，用户和交互主要为模拟数据。
 
-| 字段名               | 类型            | 说明                                |
-|-------------------|-----------------|-----------------------------------|
-| `status`          | string          | 微调是否成功的标识，成功为'success',失败为'error' |
-| `message`         | string          | 对应于状态的补充信息                        |
+默认按每个用户的时间顺序留出最新一条作为测试、倒数第二条作为验证，其余作为训练。记录不足时，相应训练或验证集合可能为空。这是按用户留出的时间切分，不是所有用户共享同一全局时间截点。
 
-## 📄 License
+| 文件 | 用途 | 当前记录数 |
+|---|---|---:|
+| `interactions_train.csv` | 初始训练、验证请求的历史 | 74,946 |
+| `interactions_validation.csv` | 选参和开发检查 | 9,989 |
+| `interactions_train_validation.csv` | 选参后的最终重训与历史 | 84,935 |
+| `interactions_test.csv` | 固定方案的最终评估 | 9,999 |
 
-**Code:** The source code in this repository is licensed under the **MIT License**.  
-**Weights:** The pre-trained model weights (in the `/model_weights` directory) are also licensed under the **MIT License**.
+数量来自当前 [split_metadata.json](data/splits/split_metadata.json)。数据变化后以重新生成的元数据为准。
 
-Copyright (c) 2026 ChendiLiu
+建议流程为“train 训练 → validation 选参 → train+validation 重训 → 固定两个方案 → test 对比”。切分脚本会读取原始全量数据生成文件；训练、搜索和常规推荐不读取测试标签。选参后不要根据测试指标继续调参。
+
+## 环境与首次运行
+
+以下命令从 `experiment_project/` 执行，示例使用 Linux/Bash。Python 3.10 及以上支持当前类型注解。
+
+[dependency/environment.yml](dependency/environment.yml) 是原环境的参考清单，包含 Windows 专用构建和非必要依赖，Linux 不宜直接照搬。为机器配置匹配的 PyTorch/torchvision 和 FAISS，再安装 pandas、NumPy、scikit-learn、Pillow、requests 等依赖。`clip` 必须是提供 `clip.load` 的 OpenAI CLIP，不能仅凭同名 PyPI 包判断安装正确。首次启动可能下载 CLIP 权重和物品图片，需联网或预置缓存。
+
+```bash
+python -c "import torch, pandas, sklearn, faiss, clip; print(torch.__version__, torch.cuda.is_available()); print(hasattr(clip, 'load'))"
+```
+
+已训练时不要随意重新切分或修改用户/物品数据。当前模型加载会重新构建词表，数据变化可能使 embedding 尺寸或 ID 对应关系失配。
+
+## 运行顺序
+
+### 1. 生成切分并训练
+
+仅在首次准备数据或明确要重建实验时生成切分：
+
+```bash
+python data_split.py
+python -m training.runner --stage all --interaction-split train --experiment-name baseline_train
+```
+
+`--stage` 支持 `recall`、`rough_ranking`、`fine_ranking`、`all`。单阶段产物不包含全链路所需的其他权重。训练复用原函数，先写入 `model_weights/`，再复制到实验目录；因此训练也会更新副本中的默认权重目录，比较时应使用实验导出的权重。
+
+把输出的实际路径填入变量：
+
+```bash
+WEIGHTS="experiments/实际训练目录/weights"
+SYSTEM_SPLIT=train
+```
+
+### 2. 检查推荐与验证链路
+
+```bash
+python main.py --weights-dir "$WEIGHTS" --method-profile baseline
+python main.py --weights-dir "$WEIGHTS" --method-profile history --history-mode hybrid
+python -m evaluation.evaluate --weights-dir "$WEIGHTS" --split validation --system-interaction-split train --method-profile baseline --max-users 20 --experiment-name validation_smoke
+```
+
+`main.py` 默认用 train 构建模型和历史，启动后不会自动重训。原项目预置权重的数据来源未由实验配置确认，不能保证与当前切分匹配；优先使用上述重新训练的权重。
+
+`--max-users` 选择切分文件中先出现的 N 个用户，不是随机抽样。小规模结果用于检查链路，不能直接代表全量效果。失败请求会记录在 `evaluation.json` 中并按空推荐计分。
+
+### 3. 可选：验证集搜索与最终重训
+
+先用少量用户、单组参数检查搜索流程：
+
+```bash
+python -m evaluation.search_history --weights-dir "$WEIGHTS" --max-users 20 --modes hybrid --lengths 20 --alphas 2.0 --hard-topks 10 --temperatures 0.1 --ranking-weights 0.15 --experiment-name search_smoke
+```
+
+正式选参可扩大范围并移除用户限制。默认搜索 32 组配置，每组运行完整推荐链路；1 万用户约需 32 万次请求。当前无断点续跑，结果在全部搜索完成后保存。
+
+选择最佳配置后：
+
+```bash
+python -m training.runner --stage all --interaction-split train_validation --experiment-name final_train_validation
+```
+
+此时将 `WEIGHTS` 更新为最终重训的权重目录，并设 `SYSTEM_SPLIT=train_validation`。若时间有限，可以跳过选参与重训，固定默认 HistoryConfig，继续使用 train 权重和 train 历史；应明确报告“预设参数实验”，而非“验证集最优参数”。
+
+### 4. 固定方案，评估 baseline 与 history
+
+两次使用同一权重、历史切分、K 和用户范围，隔离历史适配器的作用：
+
+```bash
+python -m evaluation.evaluate --weights-dir "$WEIGHTS" --split test --system-interaction-split "$SYSTEM_SPLIT" --method-profile baseline --k 10 --experiment-name test_baseline
+python -m evaluation.evaluate --weights-dir "$WEIGHTS" --split test --system-interaction-split "$SYSTEM_SPLIT" --method-profile history --history-mode hybrid --history-L 20 --history-alpha 2.0 --k 10 --experiment-name test_history_hybrid
+```
+
+如已选参，history 命令应使用 `--history-config experiments/实际搜索目录/best_history_config.json`，替换手动 mode/L/alpha 参数，以载入全部选定参数。
+
+```bash
+python -m evaluation.compare --baseline experiments/实际baseline评估目录/evaluation.json --improved experiments/实际history评估目录/evaluation.json > experiments/test_comparison.json
+```
+
+`compare` 输出绝对差值，不会自动核对权重、用户范围、失败率或统计显著性，比较前需检查原始文件。
+
+### 实验产物在哪里
+
+| 产物 | 路径 |
+|---|---|
+| 训练配置、实际设置和权重路径 | `experiments/<UTC时间>_<名称>/config.json` |
+| 导出权重 | 同目录 `weights/` |
+| 搜索全部配置与最佳配置 | 搜索目录 `search_results.json`、`best_history_config.json` |
+| 单次指标、失败示例和方法配置 | 评估目录 `evaluation.json` |
+| 两方案差值 | 上述命令输出的 `experiments/test_comparison.json` |
+| 自动编排总记录 | pipeline 目录 `experiment_manifest.json` |
+
+`python -m training.pipeline --experiment-name history_protocol --max-users 200` 可自动执行 train 训练、baseline 验证、history 选参、train_validation 重训和 history 测试。**当前 pipeline 只在最终测试阶段评估 history，没有自动生成最终 baseline 测试结果或双方案比较**；需要比较时仍按第 4 步运行。CLI 配置记录不是通用训练超参数注入器，JSON 中的 seed 等字段不能视为已自动应用；训练设置以实际训练函数及日志为准。
+
+## 历史特征的实现
+
+| 模式 | 当前实现 |
+|---|---|
+| `din` | 候选内容向量与完整历史点积，经温度 softmax 后加权 |
+| `sim_soft` | 当前与 din 使用相同的相似度 softmax 计算 |
+| `sim_hard` | 按相似度选 hard_topk 条历史，再做注意力加权 |
+| `hybrid` | 长度 <= L 走 din；L < 长度 <= alpha*L 走 soft；更长走 hard |
+
+默认 `HistoryConfig`：mode=hybrid、L=20、alpha=2.0、hard_topk=10、temperature=0.1、recall_topk=50、ranking_weight=0.15。L 是分支阈值，不是当前编码器的强制截断长度。
+
+召回在原候选集上增加历史内容相近的候选；粗排和精排融合历史分数。当前编码器没有独立可训练的 DIN 注意力网络或完整 SIM 两阶段训练过程，也没有把序列直接拼入原神经网络进行端到端训练。应称为“DIN/SIM 思路的历史兴趣适配器”，而非完整论文复现。仅 `mode=hybrid` 会按长度切换分支。
+
+## 已完成的离线实验
+
+2026-10-08 的远程评估使用同一套 train 权重和 train 历史，测试 9,999 个用户，K=10。history 使用上述默认 hybrid 配置，未完成验证集超参数搜索，也未执行 train_validation 最终重训。
+
+| 指标 | baseline | history hybrid | 绝对变化 | 相对变化 |
+|---|---:|---:|---:|---:|
+| HitRate@10 | 0.5301% | 0.7101% | +0.1800 个百分点 | +33.96% |
+| Recall@10 | 0.5301% | 0.7101% | +0.1800 个百分点 | +33.96% |
+| NDCG@10 | 0.002205 | 0.003688 | +0.001483 | +67.25% |
+
+原始文件：[baseline](experiments/20261008T035453Z_test_baseline/evaluation.json)、[history hybrid](experiments/20261008T052313Z_test_history_hybrid/evaluation.json)。
+
+两次均有 **44 个失败用户**，示例错误为 `TypeError: unsupported operand type(s) for |: 'list' and 'list'`。指标分母仍为 9,999，失败请求按未命中计分；原始文件只保存少量失败示例，不能确认全部失败用户集合完全一致。需要处理该链路问题后再开展后续验证，不能将本结果描述为全用户无异常运行。
+
+每用户仅一个测试目标，HitRate 和 Recall 因而相同；53 个命中变为 71 个，净增加 18 个。尚未做显著性检验或线上 A/B 测试，结果只说明这组配置在当前模拟数据上提供了正向离线信号。
+
+## 已知限制与后续方向
+
+- 模型词表和 scaler 未作为独立工件持久化，加载依赖同一切分和数据快照；`size mismatch` 时核对训练配置及 `--system-interaction-split`，不要强行截断 embedding。
+- 按用户留出不等同于严格全局时间回放；用户/物品元数据与统计特征也尚未证明按请求时刻重建。
+- 当前评估汇总每用户目标集，并使用该用户首条留出记录的场景；增加多条留出记录并不会自动变成逐事件回放。
+- 训练入口复用原训练循环，尚无统一逐 epoch 验证、early stopping 或最佳 checkpoint 选择。
+- history 搜索包含对部分模式无效的 L/alpha 重复组合，且未提供中途保存或实时试验进度。
+- 下一步可补充逐阶段候选命中率、逐用户结果、分支覆盖率、配对统计检验和请求延迟，再定位效果与性能瓶颈。
+
+## 服务与许可
+
+`interface/` 保留原作者的 FastAPI、数据库和微调接口，`local_api.py` 提供本地接口相关代码。服务部署需额外配置数据库和运行环境；离线评估无需启动 API。本次历史改进实验以 CSV 主链路为准，未验证所有服务入口同样支持改进配置。
+
+代码使用 [MIT License](LICENSE)，保留原版权声明 `Copyright (c) 2026 ChendiLiu`。原 README 声明预置模型权重也使用 MIT License。本副本的实验框架和历史特征扩展建立在原作者成果之上，不将既有模型与服务实现归为新增贡献。
+
+完整分步说明另见 [EXPERIMENT_GUIDE.md](EXPERIMENT_GUIDE.md)；使用时以当前代码、实验配置和本 README 的已知限制为准。
